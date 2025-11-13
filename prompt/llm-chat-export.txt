@@ -1,0 +1,458 @@
+================================================================================
+BOOSTLY - Student Recognition and Reward Platform
+================================================================================
+
+PROJECT OVERVIEW
+================================================================================
+
+Boostly is a comprehensive student recognition and reward platform designed for
+college communities. It enables students to recognize their peers, allocate
+monthly credits, and redeem earned rewards, fostering appreciation and
+engagement across student communities.
+
+Version: 1.0.0
+Technology Stack: Node.js, Express.js, MongoDB, Mongoose
+License: ISC
+
+================================================================================
+CORE FUNCTIONALITY
+================================================================================
+
+1. RECOGNITION SYSTEM
+   - Allows students to recognize peers and transfer credits
+   - Business Rules:
+     * Each student receives 100 credits every month (resets at start of calendar month)
+     * Students cannot send credits to themselves (self-recognition prevention)
+     * Monthly sending limit: 100 credits per calendar month
+     * Cannot send more credits than current balance
+     * Cannot exceed monthly sending limit
+
+2. ENDORSEMENT SYSTEM
+   - Enables students to endorse existing recognition entries (like/cheer)
+   - Business Rules:
+     * Each endorser can endorse a recognition entry only once
+     * Endorsements are count-based (no credit impact)
+     * Used for leaderboard statistics
+
+3. REDEMPTION SYSTEM
+   - Allows students to redeem received credits for vouchers
+   - Business Rules:
+     * Fixed conversion rate: ₹5 per credit
+     * Credits permanently deducted upon redemption
+     * Can only redeem credits that have been received
+
+4. MONTHLY CREDIT RESET
+   - Automatic reset mechanism at start of each calendar month
+   - Business Rules:
+     * Credits reset to 100 at start of each calendar month
+     * Up to 50 unused credits can be carried forward
+     * If student has more than 50 unused credits, only 50 can be carried forward
+     * Monthly sending limit also resets to 100 credits
+
+5. LEADERBOARD SYSTEM
+   - Lists top recipients ranked by total credits received
+   - Business Rules:
+     * Rank students by total credits received (descending order)
+     * If two students have same total credits, rank by student ID (ascending)
+     * Include total number of recognitions received
+     * Include total number of endorsements received across all recognitions
+     * Support limit parameter to control number of top students returned
+
+================================================================================
+TECHNICAL ARCHITECTURE
+================================================================================
+
+PROJECT STRUCTURE:
+------------------
+boostly/
+├── src/
+│   ├── app.js                    # Express application setup
+│   ├── server.js                 # Server entry point
+│   ├── config/
+│   │   └── db.js                 # MongoDB connection configuration
+│   ├── controllers/
+│   │   ├── recognitionController.js
+│   │   ├── endorsementController.js
+│   │   ├── redemptionController.js
+│   │   └── leaderboardController.js
+│   ├── models/
+│   │   ├── Student.js            # Student schema
+│   │   ├── Recognition.js        # Recognition schema
+│   │   ├── Endorsement.js        # Endorsement schema
+│   │   └── SCHEMA.md             # Database schema documentation
+│   ├── routes/
+│   │   ├── recognitionRoutes.js
+│   │   ├── endorsementRoutes.js
+│   │   ├── redemptionRoutes.js
+│   │   ├── leaderboardRoutes.js
+│   │   └── API_DOCUMENTATION.md  # API endpoint documentation
+│   ├── utils/
+│   │   ├── monthlyReset.js        # Monthly credit reset utilities
+│   │   ├── dateHelpers.js        # Date/time utility functions
+│   │   ├── validators.js         # Input validation utilities
+│   │   ├── responseHelpers.js    # API response formatting
+│   │   ├── creditHelpers.js      # Credit calculation utilities
+│   │   ├── errorHandler.js       # Error handling middleware
+│   │   ├── index.js              # Utility exports
+│   │   └── README.md             # Utilities documentation
+│   └── __tests__/                # Unit and integration tests
+├── package.json                  # Project dependencies and scripts
+├── jest.config.js                # Jest testing configuration
+├── test-api.js                   # API testing script
+├── create-test-students.js       # Test data setup script
+└── TEST_GUIDE.md                 # Testing documentation
+
+================================================================================
+DATABASE SCHEMA
+================================================================================
+
+1. STUDENT MODEL
+   Collection: students
+   Fields:
+   - studentId (String, unique, indexed)
+   - name (String, required)
+   - email (String, unique, required)
+   - credits (Number, default: 100, min: 0)
+   - monthlySendingLimit (Number, default: 100, min: 0)
+   - creditsSentThisMonth (Number, default: 0, min: 0)
+   - totalCreditsReceived (Number, default: 0, min: 0)
+   - lastResetMonth (String, nullable)
+   - previousMonthUnusedCredits (Number, default: 0, min: 0)
+   - createdAt, updatedAt (Date, auto)
+
+2. RECOGNITION MODEL
+   Collection: recognitions
+   Fields:
+   - senderId (String, required, indexed)
+   - receiverId (String, required, indexed)
+   - credits (Number, required, min: 1)
+   - message (String, optional, max: 500)
+   - recognitionMonth (String, required, indexed)
+   - createdAt, updatedAt (Date, auto)
+   Validations:
+   - Prevents self-recognition (senderId ≠ receiverId)
+
+3. ENDORSEMENT MODEL
+   Collection: endorsements
+   Fields:
+   - recognitionId (ObjectId, required, ref: Recognition, indexed)
+   - endorserId (String, required, ref: Student, indexed)
+   - createdAt, updatedAt (Date, auto)
+   Constraints:
+   - Unique constraint on (recognitionId, endorserId)
+
+================================================================================
+API ENDPOINTS
+================================================================================
+
+BASE URL: http://localhost:3000/api
+
+RECOGNITION ENDPOINTS:
+----------------------
+POST   /api/recognition
+       Create a new recognition (transfer credits)
+       Body: { senderId, receiverId, credits, message? }
+
+GET    /api/recognition/received/:studentId
+       Get all recognitions received by a student
+       Query: limit?, offset?
+
+GET    /api/recognition/sent/:studentId
+       Get all recognitions sent by a student
+       Query: limit?, offset?
+
+GET    /api/recognition/:id
+       Get a specific recognition by ID
+
+ENDORSEMENT ENDPOINTS:
+---------------------
+POST   /api/endorsement
+       Create a new endorsement
+       Body: { recognitionId, endorserId }
+
+DELETE /api/endorsement/:id
+       Remove an endorsement
+
+GET    /api/endorsement/recognition/:recognitionId
+       Get all endorsements for a recognition
+
+GET    /api/endorsement/check/:recognitionId/:endorserId
+       Check if user has endorsed a recognition
+
+REDEMPTION ENDPOINTS:
+--------------------
+POST   /api/redemption
+       Redeem credits for vouchers (₹5 per credit)
+       Body: { studentId, creditsToRedeem }
+
+GET    /api/redemption/info/:studentId
+       Get redemption information for a student
+
+GET    /api/redemption/history/:studentId
+       Get redemption history (placeholder)
+
+LEADERBOARD ENDPOINTS:
+---------------------
+GET    /api/leaderboard
+       Get leaderboard of top recipients
+       Query: limit? (default: 10)
+
+GET    /api/leaderboard/optimized
+       Get optimized leaderboard (aggregation)
+
+GET    /api/leaderboard/student/:studentId
+       Get a specific student's ranking
+
+================================================================================
+BUSINESS RULES IMPLEMENTATION
+================================================================================
+
+CREDIT MANAGEMENT:
+------------------
+- Monthly Allocation: 100 credits per student per month
+- Carry-Forward: Maximum 50 unused credits from previous month
+- Monthly Reset: Automatic at start of each calendar month
+- Sending Limit: 100 credits per month (resets monthly)
+
+VALIDATION RULES:
+-----------------
+- Self-recognition prevention (enforced at schema and controller level)
+- Sufficient balance validation before credit transfer
+- Monthly sending limit enforcement
+- Credit amount must be positive integer
+- Duplicate endorsement prevention (unique constraint)
+
+REDEMPTION RULES:
+-----------------
+- Conversion Rate: ₹5 per credit (fixed)
+- Permanent deduction upon redemption
+- Can only redeem received credits
+- Balance validation before redemption
+
+LEADERBOARD RULES:
+------------------
+- Primary Sort: Total credits received (descending)
+- Secondary Sort: Student ID (ascending) for ties
+- Includes recognition count per student
+- Includes endorsement count per student
+
+================================================================================
+ENVIRONMENT CONFIGURATION
+================================================================================
+
+REQUIRED ENVIRONMENT VARIABLES:
+--------------------------------
+PORT=3000
+MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/database_name
+NODE_ENV=development (optional)
+
+SETUP INSTRUCTIONS:
+-------------------
+1. Install dependencies: npm install
+2. Create .env file with MONGO_URI and PORT
+3. Run test data setup: node create-test-students.js
+4. Start server: npm start
+5. Server runs on http://localhost:3000
+
+================================================================================
+TESTING
+================================================================================
+
+UNIT TESTS:
+-----------
+- Date Helpers: 7 tests
+- Validators: 18 tests
+- Credit Helpers: 14 tests
+Total: 39 unit tests (all passing)
+
+TEST COMMANDS:
+--------------
+npm test              # Run all tests
+npm run test:watch    # Run tests in watch mode
+npm run test:coverage # Run tests with coverage
+node test-api.js      # Run API integration tests
+
+TEST DATA:
+----------
+Default test students:
+- STU001: Alice Johnson
+- STU002: Bob Smith
+- STU003: Charlie Brown
+
+================================================================================
+DEPENDENCIES
+================================================================================
+
+PRODUCTION DEPENDENCIES:
+------------------------
+- express: ^5.1.0        # Web framework
+- mongoose: ^8.19.3     # MongoDB ODM
+- dotenv: ^17.2.3       # Environment variable management
+
+DEVELOPMENT DEPENDENCIES:
+-------------------------
+- nodemon: ^3.1.11      # Development server with auto-reload
+- jest: Latest          # Testing framework
+- supertest: Latest     # HTTP assertion library
+
+================================================================================
+ERROR HANDLING
+================================================================================
+
+ERROR RESPONSE FORMAT:
+----------------------
+{
+  "success": false,
+  "message": "Error message description"
+}
+
+HTTP STATUS CODES:
+------------------
+200 - Success
+201 - Created
+400 - Bad Request (validation errors)
+404 - Not Found
+500 - Internal Server Error
+
+VALIDATION ERRORS:
+------------------
+- Missing required fields
+- Invalid data types
+- Business rule violations
+- Resource not found
+
+================================================================================
+SECURITY CONSIDERATIONS
+================================================================================
+
+CURRENT IMPLEMENTATION:
+-----------------------
+- Input validation on all endpoints
+- Business rule enforcement
+- Database query sanitization (via Mongoose)
+- Error message sanitization
+
+RECOMMENDED ENHANCEMENTS:
+-------------------------
+- Authentication and authorization
+- Rate limiting
+- Request size limits
+- CORS configuration
+- Input sanitization middleware
+- API key management (if needed)
+
+================================================================================
+PERFORMANCE OPTIMIZATIONS
+================================================================================
+
+IMPLEMENTED:
+------------
+- Database indexes on frequently queried fields
+- Efficient aggregation pipelines for leaderboard
+- Lean queries for read operations
+- Batch operations for monthly resets
+
+INDEXES:
+--------
+- Student: studentId (unique), totalCreditsReceived + studentId (compound)
+- Recognition: senderId, receiverId, recognitionMonth, compound indexes
+- Endorsement: recognitionId, endorserId, compound unique index
+
+================================================================================
+DEPLOYMENT NOTES
+================================================================================
+
+PRODUCTION CHECKLIST:
+---------------------
+[ ] Set NODE_ENV=production
+[ ] Configure secure MONGO_URI
+[ ] Set appropriate PORT
+[ ] Enable error logging
+[ ] Set up monitoring
+[ ] Configure CORS if needed
+[ ] Set up rate limiting
+[ ] Enable HTTPS
+[ ] Set up backup strategy for MongoDB
+
+SCALING CONSIDERATIONS:
+-----------------------
+- Consider caching for leaderboard queries
+- Implement pagination for large datasets
+- Use connection pooling for MongoDB
+- Consider read replicas for heavy read operations
+- Implement job queue for batch operations (monthly reset)
+
+================================================================================
+MAINTENANCE AND UPDATES
+================================================================================
+
+MONTHLY RESET:
+-------------
+The system automatically handles monthly credit resets. For batch operations,
+use the utility function: batchResetAllStudents()
+
+MONITORING:
+-----------
+- Track API response times
+- Monitor database connection pool
+- Log error rates
+- Monitor credit distribution patterns
+- Track redemption rates
+
+BACKUP STRATEGY:
+---------------
+- Regular MongoDB backups recommended
+- Export student data periodically
+- Maintain transaction logs
+
+================================================================================
+FUTURE ENHANCEMENTS
+================================================================================
+
+POTENTIAL FEATURES:
+------------------
+- User authentication and authorization
+- Email notifications for recognitions
+- Analytics dashboard
+- Admin panel for user management
+- Redemption history tracking (Redemption model)
+- Credit transaction history
+- Notification system
+- Mobile app API support
+- Webhook support for integrations
+
+================================================================================
+SUPPORT AND DOCUMENTATION
+================================================================================
+
+DOCUMENTATION FILES:
+--------------------
+- src/routes/API_DOCUMENTATION.md    - Complete API reference
+- src/models/SCHEMA.md                - Database schema details
+- src/utils/README.md                 - Utility functions guide
+- TEST_GUIDE.md                        - Testing documentation
+
+CONTACT:
+--------
+For issues, questions, or contributions, please refer to the project
+repository or contact the development team.
+
+================================================================================
+CHANGELOG
+================================================================================
+
+Version 1.0.0 (Current):
+-------------------------
+- Initial release
+- Core recognition system
+- Endorsement system
+- Redemption system
+- Leaderboard functionality
+- Monthly credit reset
+- Comprehensive test suite
+- API documentation
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
+
